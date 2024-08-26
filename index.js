@@ -15,7 +15,7 @@ app.get('/', (req, res) => {
 
 const uri = process.env.MONGO_URI;
 mongoose
-  .connect(uri, { useNewUrlParser: true, useUnifiedTopology: true })
+  .connect(uri)
   .then(() => console.log('Connected to MongoDB database'))
   .catch((error) => console.error('Failed to connect to database:', error));
 
@@ -32,6 +32,8 @@ const exerciseSchema = new mongoose.Schema({
 
 const User = mongoose.model('User', userSchema);
 const Exercise = mongoose.model('Exercise', exerciseSchema);
+
+
 
 app.post('/api/users', async (req, res) => {
   const username = req.body.username;
@@ -56,47 +58,55 @@ app.get('/api/users', async (req, res) => {
 });
 
 app.post('/api/users/:_id/exercises', async (req, res) => {
-  const userId = req.params._id;
-  let { description, duration, date } = req.body;
+  console.log('post exercises can be working')
+  const userId = req.params._id; 
+  console.log('userparam id working')
 
-  try {
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+  let { description, duration, date } = req.body; 
+
+  // if(!date){
+  //   date = new Date()
+  // } else {
+  //   date = new Date(date)
+  // }
+
+  //changing returns to date =  and removing const dateChecker fixed: 
+  // #8 The response returned from POST /api/users/:_id/exercises will be the user object with the exercise fields added.
+    if (!date || date === 'undefined') {
+        date = (new Date(Date.now())).toDateString();
+    } else {
+        const parts = date.split('-');
+        const year = parseInt(parts[0]);
+        const month = parseInt(parts[1]) - 1;
+        const day = parseInt(parts[2]);
+        const utcDate = new Date(Date.UTC(year, month, day));
+        date =  new Date(utcDate.getTime() + utcDate.getTimezoneOffset() * 60000).toDateString();
     }
 
-    duration = Number(duration);
-    if (isNaN(duration)) {
-      return res.status(400).json({ error: 'Duration must be a number' });
-    }
+    
+  let foundUser = await User.findById(userId); 
+ 
 
-    date = date ? new Date(date) : new Date();
-    if (date.toString() === 'Invalid Date') {
-      date = new Date();
-    }
+  const newExercise = new Exercise({
+    username: foundUser.username, 
+    description, 
+    duration: Number(duration),
+    date:  date ? new Date(date) : new Date(),
+    userId: userId, 
+  })
 
-    const exercise = new Exercise({
-      userId: user._id,
-      username: user.username,
-      description,
-      duration,
-      date
-    });
+  await newExercise.save()
 
-    await exercise.save();
+  res.json({
+    _id: foundUser._id,
+    username: foundUser.username,
+    description: newExercise.description,
+    duration: newExercise.duration,
+    date: newExercise.date.toDateString(),
+  })
+})
 
-    res.json({
-      _id: user._id,
-      username: user.username,
-      date: date.toDateString(),
-      duration: duration,
-      description: description
-    });
-  } catch (error) {
-    console.error('Error adding exercise:', error);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
+
 
 app.get('/api/users/:_id/logs', async (req, res) => {
   const { from, to, limit } = req.query;
@@ -116,6 +126,7 @@ app.get('/api/users/:_id/logs', async (req, res) => {
     if (from || to) filter.date = dateObj;
 
     let exercises = await Exercise.find(filter).limit(Number(limit) || 0);
+    
 
     const log = exercises.map(e => ({
       description: e.description,
@@ -140,7 +151,6 @@ const listener = app.listen(process.env.PORT || 3000, () => {
 });
 
 
-// // running tests
-// The response returned from POST /api/users/:_id/exercises will be the user object with the exercise fields added.
-// The date property of any object in the log array that is returned from GET /api/users/:_id/logs should be a string. Use the dateString format of the Date API.
-// // tests completed
+
+// #15 Fix for localhost build:  The date property of any object in the log array that is returned from GET /api/users/:_id/logs should be a string. Use the dateString format of the Date API.
+// // If testing on freeCodeCamp website check date in chrome inspector/network/log/headers/date and then also changed date on local computer to match date in network before running and pressing the "completed this challenge" btn  
